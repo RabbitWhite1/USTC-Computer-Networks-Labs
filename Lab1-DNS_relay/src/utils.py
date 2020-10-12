@@ -1,4 +1,5 @@
 import logging
+import socket
 
 
 def bytes_to_binary(x):
@@ -12,11 +13,12 @@ class CLASSES:
     HS = 4
 
 
-class TYPES:
-    A = 1   # a host address
-
-
 class Query:
+    RCODE_NOERROR = '0000'
+    RCODE_NXDOMAIN = '0011'
+    QTYPE_A = '{:016d}'.format(int(bin(1)[2:]))
+    QTYPE_AAAA = '{:016d}'.format(int(bin(28)[2:]))
+
     def __init__(self, _bytes):
         self._bytes = _bytes
         # Header Section
@@ -74,18 +76,33 @@ class Query:
         return ('.'.join(QNAME), QTYPE, QCLASS), _bytes[cur:]
 
 
-class Answer:
+class ResourceRecord:
+    NAME_PTR = 0
+    QTYPE_A = 1
+    QTYPE_AAAA = 28
+
     def __init__(self, NAME=None, TYPE=1, CLASS=1, TTL=60, RDATA=None):
         if not NAME:
-            NAME = bytes()
-        if not RDATA:
-            RDATA = bytes()
-        self.NAME = NAME  # domain name
+            self.NAME = b'\xc0\x0c'  # pointer referring to `\x0c`(i.e. first QNAME)
+        elif NAME == ResourceRecord.NAME_PTR:
+            self.NAME = b'\xc0\x0c'  # pointer referring to `\x0c`(i.e. first QNAME)
+        elif type(NAME) == DomainName:
+            self.NAME = NAME.encode()
+        else:
+            assert (type(NAME) == bytes)
+            self.NAME = NAME  # domain name
+
         self.TYPE = TYPE  # 16 bits
         self.CLASS = CLASS  # 16 bits
         self.TTL = TTL  # 32 bits
-        self.RDLENGTH = len(RDATA)  # 16 bits
-        self.RDATA = RDATA  # variable
+        if not RDATA:
+            self.RDATA = bytes()
+        elif type(RDATA) == Address:
+            self.RDATA = RDATA.encode()
+        else:
+            assert (type(RDATA) == bytes)
+            self.RDATA = RDATA  # variable
+        self.RDLENGTH = len(self.RDATA)  # 16 bits
 
     def encode(self):
         return self.NAME + \
@@ -112,5 +129,73 @@ class DomainName:
         return b''.join(code + [b'\x00'])
 
 
+class Address:
+    def __init__(self, address, ipv=4):
+        self.address = None
+        if ipv == 4:
+            self.ipv = 4
+            if type(address) == str:
+                self.address = address.split('.')
+            elif type(address) == list or type(address) == tuple:
+                self.address = address
+            try:
+                self.address = [int(i) for i in self.address]
+            except ValueError:
+                logging.warning('invalid address format')
+            if len(self.address) != 4:
+                raise ValueError
+            for i in self.address:
+                if not 0 <= i < 256:
+                    raise ValueError
+        elif ipv == 6:
+            self.ipv = 6
+            print(address)
+            zeros_index = address.find('::')
+            if zeros_index != -1:
+                address = address[:zeros_index] + ':' + '0:' * (8-address.count(':')) + address[zeros_index+2:]
+                if address[0] == ':':
+                    address = '0' + address
+                elif address[-1] == ':':
+                    address = address + '0'
+            if type(address) == str:
+                self.address = address.split(':')
+            elif type(address) == list or type(address) == tuple:
+                self.address = address
+            print(self.address)
+            try:
+                self.address = [int(i, 16) for i in self.address]
+            except ValueError:
+                logging.warning('invalid address format')
+            for i in self.address:
+                if not 0 <= i < 65536:
+                    raise ValueError
+
+    def encode(self):
+        code = []
+        for i in self.address:
+            if self.ipv == 4:
+                code.append(i.to_bytes(1, byteorder='big'))
+            elif self.ipv == 6:
+                code.append(i.to_bytes(2, byteorder='big'))
+        return b''.join(code)
+
+
+def forward(data):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.sendto(data[0], ('8.8.8.8', 53))
+    try:
+        recv = sock.recvfrom(2048)
+    finally:
+        sock.close()
+    return recv[0], data[1]
+
+
 if __name__ == '__main__':
-    print(DomainName('www.google.com').encode())
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind(('127.0.0.1', 53))
+    try:
+        while True:
+            data = forward(sock.recvfrom(2048))
+            sock.sendto(data[0], data[1])
+    finally:
+        sock.close()
