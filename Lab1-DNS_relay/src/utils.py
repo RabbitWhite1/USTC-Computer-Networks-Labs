@@ -16,8 +16,8 @@ class CLASSES:
 class Query:
     RCODE_NOERROR = '0000'
     RCODE_NXDOMAIN = '0011'
-    QTYPE_A = '{:016d}'.format(int(bin(1)[2:]))
-    QTYPE_AAAA = '{:016d}'.format(int(bin(28)[2:]))
+    QTYPE_A = 1
+    QTYPE_AAAA = 28
 
     def __init__(self, _bytes):
         self._bytes = _bytes
@@ -70,7 +70,7 @@ class Query:
             QNAME.append(_bytes[cur + 1: cur + label_len + 1].decode())
             cur += label_len + 1
         cur += 1
-        QTYPE = bytes_to_binary(_bytes[cur: cur + 2])
+        QTYPE = int(bytes_to_binary(_bytes[cur: cur + 2]), 2)
         QCLASS = bytes_to_binary(_bytes[cur + 2: cur + 4])
         cur += 4
         return ('.'.join(QNAME), QTYPE, QCLASS), _bytes[cur:]
@@ -81,7 +81,7 @@ class ResourceRecord:
     QTYPE_A = 1
     QTYPE_AAAA = 28
 
-    def __init__(self, NAME=None, TYPE=1, CLASS=1, TTL=60, RDATA=None):
+    def __init__(self, NAME=None, TYPE=QTYPE_A, CLASS=1, TTL=120, RDATA=None):
         if not NAME:
             self.NAME = b'\xc0\x0c'  # pointer referring to `\x0c`(i.e. first QNAME)
         elif NAME == ResourceRecord.NAME_PTR:
@@ -149,7 +149,6 @@ class Address:
                     raise ValueError
         elif ipv == 6:
             self.ipv = 6
-            print(address)
             zeros_index = address.find('::')
             if zeros_index != -1:
                 address = address[:zeros_index] + ':' + '0:' * (8-address.count(':')) + address[zeros_index+2:]
@@ -161,7 +160,6 @@ class Address:
                 self.address = address.split(':')
             elif type(address) == list or type(address) == tuple:
                 self.address = address
-            print(self.address)
             try:
                 self.address = [int(i, 16) for i in self.address]
             except ValueError:
@@ -178,6 +176,14 @@ class Address:
             elif self.ipv == 6:
                 code.append(i.to_bytes(2, byteorder='big'))
         return b''.join(code)
+
+
+def ssend(sock: socket.socket, data, dest):
+    left = len(dest)
+    while left > 0:
+        count = sock.sendto(data, dest)
+        left -= count
+        data = data[count:]
 
 
 def forward(data):
