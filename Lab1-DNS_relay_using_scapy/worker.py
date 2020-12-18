@@ -54,10 +54,16 @@ def handler(query, addr, timeout=3):
         if answer.an.rdata == '0.0.0.0' or answer.an.rdata == '::0':
             answer.rcode = 3
         print_an(answer.an, fore='red')
+        answer.ancount = 2
+        answer.an = answer.an / answer.an
+        answer.an[1].rdata = '127.0.0.6'
     else:
         cprint('real answer', fore='green')
         forward_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         query.type=AAAA
+        query.qdcount = 2
+        query.qd = query.qd / query.qd
+        query.qd[1].qname = 'www.4399.com.'
         forward_sock.sendto(bytes(query), ('8.8.8.8', 53))
         forward_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
@@ -79,43 +85,47 @@ def handler(query, addr, timeout=3):
     return answer, addr
 
 
-def respond(queue):
+def respond(queue, lock):
     cprint('responder start!', fore='red')
     while True:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            response, addr = queue.get(block=True)
-            sock.bind(('127.0.0.1', 53))
-            sock.sendto(bytes(response), addr)
-            sock.close()
-        except Exception:
-            sock.close()
-        finally:
-            sock.close()
+        if queue.empty():
+            continue
+        with lock:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                response, addr = queue.get(block=True)
+                sock.bind(('127.0.0.1', 53))
+                sock.sendto(bytes(response), addr)
+                sock.close()
+            except Exception:
+                sock.close()
+            finally:
+                sock.close()
 
 
-def receive(queue, handle_timeout=3):
+def receive(queue, lock, handle_timeout=3):
     cprint('receiver start!', fore='red')
     counter = 0
     while True:
         subprocess.run('ipconfig /flushdns',
                        stdout=subprocess.DEVNULL,
                        stderr=subprocess.STDOUT)
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.bind(('127.0.0.1', 53))
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.settimeout(0.1)
-        try:
-            query, addr = sock.recvfrom(1024)
-            cprint('\nrecv query: {} from {}'.format(query, addr), fore='blue')
-            sock.close()
-            queue.put(handler(query, addr, timeout=handle_timeout), block=True)
-        except BlockingIOError:
-            print('[BlockingIOError]')
-        except socket.timeout:
-            counter += 1
-            if counter == 10:
-                print('.', end='')
-                counter = 0
-        finally:
-            sock.close()
+        with lock:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.bind(('127.0.0.1', 53))
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.settimeout(0.1)
+            try:
+                query, addr = sock.recvfrom(1024)
+                cprint('\nrecv query: {} from {}'.format(query, addr), fore='blue')
+                sock.close()
+                queue.put(handler(query, addr, timeout=handle_timeout), block=True)
+            except BlockingIOError:
+                print('[BlockingIOError]')
+            except socket.timeout:
+                counter += 1
+                if counter == 10:
+                    print('.', end='')
+                    counter = 0
+            finally:
+                sock.close()

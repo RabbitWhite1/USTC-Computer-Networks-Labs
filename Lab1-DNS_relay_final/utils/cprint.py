@@ -25,22 +25,29 @@ def cprint(string, *args, style=None, fore=None, back=None, sep=' ', end='\n', f
     print('\033[0m', end='')
 
 
-def print_an(an, style=None, fore=None, back=None, sep=' ', end='\n', file=None, level='normal'):
+def cprint_header(header, style=None, fore=None, back=None, sep=' ', end='\n', file=None, level='normal'):
     args = {'style': style, 'fore': fore, 'back': back, 'sep': sep, 'end': end, 'file': file, 'level': level}
-    cprint('\trrname: ', an.rrname, **args)
-    cprint('\ttype: ', an.type, **args)
-    cprint('\trclass: ', an.rclass, **args)
-    cprint('\trdlen: ', an.rdlen, **args)
-    cprint('\trdata{}: '.format(type(an.rdata)), an.rdata, **args)
+    cprint(f'\t[header]   id: {header.msg_id}, '
+           f'qdcount: {header.qdcount}, '
+           f'ancount: {header.qdcount}',
+           **args)
 
 
-def print_answer(answer, style=None, fore=None, back=None, sep=' ', end='\n', file=None, level='normal'):
+def cprint_question(question, style=None, fore=None, back=None, sep=' ', end='\n', file=None, level='normal'):
     args = {'style': style, 'fore': fore, 'back': back, 'sep': sep, 'end': end, 'file': file, 'level': level}
-    cprint('\t', answer, **args)
-    if answer.an:
-        cprint('\trrname: ', answer.an.rrname, **args)
-        cprint('\ttype: ', answer.an.type, **args)
-        cprint('\trclass: ', answer.an.rclass, **args)
-        cprint('\trdlen: ', answer.an.rdlen, **args)
-        cprint('\trdata{}: '.format(type(answer.an.rdata)), answer.an.rdata, **args)
+    cprint(f'\t[question] qname: {question.qname}, '
+           f'qtype: {question.qtype}, '
+           f'qclass: {question.qclass}, '
+           f'next_offset: {question.next_offset}',
+           **args)
 
+
+def cprint_answer(answer, style=None, fore=None, back=None, sep=' ', end='\n', file=None, level='normal'):
+    args = {'style': style, 'fore': fore, 'back': back, 'sep': sep, 'end': end, 'file': file, 'level': level}
+    cprint(f'\t[answer]   name: {answer.name}, '
+           f'type: {answer.atype}, '
+           f'class: {answer.aclass}, '
+           f'ttl: {answer.ttl}, '
+           f'rdlegnth: {answer.rdlength}, '
+           f'rdata: {answer.rdata}',
+           **args)
