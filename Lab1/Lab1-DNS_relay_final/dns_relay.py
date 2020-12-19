@@ -85,6 +85,7 @@ def backsender(queue, lock):
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             try:
                 sock.bind(('127.0.0.1', 53))
+                sock.getsockname()
                 # for answer_count in range(int(queue.qsize() / 2 + 1)):
                 for answer_count in range(queue.qsize()):
                     if queue.qsize() <= 0:

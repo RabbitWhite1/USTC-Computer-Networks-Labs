@@ -28,6 +28,7 @@ def cprint(string, *args, style=None, fore=None, back=None, sep=' ', end='\n', f
 def cprint_header(header, style=None, fore=None, back=None, sep=' ', end='\n', file=None, level='normal'):
     args = {'style': style, 'fore': fore, 'back': back, 'sep': sep, 'end': end, 'file': file, 'level': level}
     cprint(f'\t[header]   id: {header.msg_id}, '
+           f'rcode: {header.rcode}, '
            f'qdcount: {header.qdcount}, '
            f'ancount: {header.qdcount}',
            **args)
