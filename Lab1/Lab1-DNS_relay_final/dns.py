@@ -61,12 +61,16 @@ def parse_msg(msg, style=None, fore=None, back=None, sep=' ', end='\n', file=Non
     cprint_question(question, **args)
     offset = question.next_offset
     answers = []
+    bmsg = header.bmsg[:12] + question.bmsg[12: offset]
     for i in range(header.ancount):
         answer = DNSAnswer(msg, offset)
-        cprint_answer(answer, **args)
+        # answer.ttl = 5
         answers.append(answer)
+        cprint_answer(answer, **args)
+        bmsg += answer.bmsg[offset: answer.next_offset]
         offset = answer.next_offset
-    return msg
+    bmsg = bmsg + msg[len(bmsg):]
+    return bmsg
 
 
 class DNSHeader:
@@ -99,12 +103,21 @@ class DNSHeader:
         self.msg[16] = str(value)
 
     @property
-    def rd(self):
-        return self.msg[23]
+    def aa(self):
+        return int(self.msg[21])
+
+    @aa.setter
+    def aa(self, value: int):
+        assert value == 1 or value == 0
+        self.msg[21] = str(value)
 
     @property
-    def ra(self):
-        return self.msg[24]
+    def rd(self):
+        return int(self.msg[23])
+
+    @property
+    def ra(self) -> int:
+        return int(self.msg[24])
 
     @ra.setter
     def ra(self, value: int):
@@ -182,6 +195,11 @@ class DNSAnswer(DNSResourceRecord):
     def ttl(self):
         return bytes_to_int(self.bmsg[self.offset + self.len_name + 4:
                                       self.offset + self.len_name + 8])
+
+    @ttl.setter
+    def ttl(self, value):
+        self.bmsg[self.offset + self.len_name + 4:
+                  self.offset + self.len_name + 8] = int_to_bytes(value, num_bytes=4)
 
     @property
     def rdlength(self):
