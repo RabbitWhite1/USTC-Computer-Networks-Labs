@@ -9,9 +9,15 @@ import os.path as osp
 
 def forward(msg):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.settimeout(2)
     real_dns_server = ('223.5.5.5', 53)  # ali dns server
-    sock.sendto(msg, real_dns_server)
-    answer, _ = sock.recvfrom(1024)
+    # real_dns_server = ('8.8.8.8', 53)  # ali dns server
+    try:
+        sock.sendto(msg, real_dns_server)
+        answer, _ = sock.recvfrom(1024)
+    except socket.timeout:
+        ...
+        return None
     return answer
 
 
@@ -25,7 +31,7 @@ def relay(semaphore: mp.Semaphore, queue: mp.Queue, output_lock: mp.Lock,
     assert header.qdcount == 1
     question = DNSQuestion(bmsg, offset=12)
     with output_lock:
-        cprint(f'[recv query {bytes_to_int(bmsg[:2])}]: {bmsg} from {addr}', fore='green', style='reverse')
+        cprint(f'[{recv_time}][recv query {bytes_to_int(bmsg[:2])}]: {bmsg} from {addr}', fore='green', style='reverse')
         cprint_header(header, fore='green')
         cprint_question(question, fore='green')
     if question.qname in relay_dict:
@@ -38,6 +44,8 @@ def relay(semaphore: mp.Semaphore, queue: mp.Queue, output_lock: mp.Lock,
             mode = 'local resolve '
         else:
             answer = forward(bmsg)
+            if answer is None:
+                return
             mode = 'relay msg  '
     else:
         answer = forward(bmsg)
@@ -49,14 +57,16 @@ def relay(semaphore: mp.Semaphore, queue: mp.Queue, output_lock: mp.Lock,
 def receiver(queue, socket_lock, output_lock, sock):
     config_path = osp.join(osp.dirname(__file__), 'etc', 'config')
     last_read_config_time = -1
-    semaphore = mp.Semaphore(128)
+    semaphore = mp.Semaphore(7)
     while True:
         with socket_lock:
             if osp.getmtime(config_path) > last_read_config_time:
                 last_read_config_time = osp.getmtime(config_path)
-                config_file = open('etc/config')
+                config_file = open(config_path)
                 relay_dict = {}
                 for line in config_file:
+                    if len(line) == 1 and line[0] == '\n':
+                        continue
                     addr, name = line.strip('\n').split(' ')
                     relay_dict[name] = addr
                 print(relay_dict)
@@ -83,13 +93,16 @@ def backsender(queue: mp.Queue, socket_lock: mp.Lock, output_lock: mp.Lock, sock
                 if queue.qsize() <= 0:
                     break
                 answer, addr, recv_time, mode = queue.get()
+                if answer is None:
+                     continue
                 with output_lock:
-                    cprint(f'[{mode}{bytes_to_int(answer[:2])}]: {answer}', fore='cyan', style='reverse')
+                    cprint(f'[{datetime.now()}][{mode}{bytes_to_int(answer[:2])}]: {answer}', fore='cyan', style='reverse')
                     answer = parse_msg(answer, fore='cyan')
                 sock.sendto(answer, addr)
-                time_cost = datetime.now() - recv_time
+                send_time = datetime.now()
+                time_cost = send_time - recv_time
                 with output_lock:
-                    cprint(f'[time cost  {bytes_to_int(answer[:2])}]: {time_cost}', fore='blue', style='reverse')
+                    cprint(f'[{send_time}][time cost  {bytes_to_int(answer[:2])}]: {time_cost}', fore='blue', style='reverse')
 
 
 def main():
